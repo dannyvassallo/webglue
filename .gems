@@ -3,7 +3,3 @@ SystemTimer
 crack
 ratom
 ruby-hmac
-sqlite3-ruby
-sequel
-sinatra
-json
