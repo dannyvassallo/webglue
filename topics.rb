@@ -1,10 +1,5 @@
-begin
-  require 'system_timer'
-  MyTimer = SystemTimer
-rescue
-  require 'timeout'
-  MyTimer = Timeout
-end
+require 'timeout'
+MyTimer = Timeout
 
 # Small fix for feeds with 'xhtml' type content
 module Atom
@@ -25,10 +20,10 @@ module Atom
 
         node << div
         node
-      end  
+      end
     end
-  end  
-end  
+  end
+end
 
 module WebGlue
 
@@ -37,7 +32,7 @@ module WebGlue
     FEEDS_DIR = (File.join(File.dirname(__FILE__), 'feeds')).freeze
     GIVEUP    = 10
     CHECK     = 300 # check every 5 min
-  end  
+  end
 
   class InvalidTopicException < Exception; end
 
@@ -51,7 +46,7 @@ module WebGlue
 
     def Topic.to_url(hash)
       hash.unpack("m")[0]
-    end   
+    end
 
     def Topic.sync(url)
       raise InvalidTopicException unless url
@@ -62,7 +57,7 @@ module WebGlue
         end
       rescue
         raise InvalidTopicException
-      end  
+      end
       raise InvalidTopicException unless feed
       return feed
     end
@@ -71,31 +66,31 @@ module WebGlue
       path = File.join(Config::FEEDS_DIR,"#{hash}.yml")
       raise InvalidTopicException unless File.exists?(path)
       return YAML::load_file(path)
-    end  
+    end
 
     def Topic.load_url(url)
       raise InvalidTopicException unless url
       h = Topic.to_hash(url)
       return Topic.load_file(h)
-    end  
+    end
 
     def Topic.save!(url, feed)
       raise InvalidTopicException unless (url and feed)
       h = Topic.to_hash(url)
       File.open(File.join(Config::FEEDS_DIR,"#{h}.yml"), "w") do |out|
         YAML::dump(feed, out)
-      end  
+      end
     end
 
     def Topic.diff(url, to_atom = false)
       raise InvalidTopicException unless url
-      
+
       begin
         old_feed = Topic.load_url(url)
         urls = old_feed.entries.collect {|e| e.links.first.href }
       rescue InvalidTopicException
         urls = []
-      end  
+      end
 
       new_feed = nil
       begin
@@ -104,7 +99,7 @@ module WebGlue
         end
       rescue Exception => e
         raise e.to_s
-      end  
+      end
       raise InvalidTopicException unless new_feed
 
       Topic.save!(url, new_feed)
@@ -116,6 +111,6 @@ module WebGlue
     end
 
     def Topic.atom_diff(url)
-    end  
-  end  
-end  
+    end
+  end
+end

@@ -6,12 +6,12 @@ require "bundler/setup"
 ENV['RACK_ENV'] ||= "development"
 
 %w{ logger sinatra sequel zlib json httpclient atom hmac-sha1 }.each { |lib| require lib }
-require 'topics'
+require './topics'
 
 module WebGlue
 
   class App < Sinatra::Base
- 
+
     enable :raise_errors
     enable :logging, :dump_errors
     disable :sessions
@@ -28,7 +28,7 @@ module WebGlue
       end
 
       DB = Sequel.connect(ENV['DATABASE_URL'] || 'sqlite://webglue.db')
-    
+
       unless DB.table_exists? "topics"
         DB.create_table :topics do
           primary_key :id
@@ -36,12 +36,12 @@ module WebGlue
           time        :created
           time        :updated
           integer     :dirty, :default => 1  # 0 - no changes, 1 - need resync
-          index       [:updated] 
-          index       [:dirty] 
+          index       [:updated]
+          index       [:dirty]
           index       [:url], :unique => true
         end
       end
-    
+
       unless DB.table_exists? "subscriptions"
         DB.create_table :subscriptions do
           primary_key :id
@@ -52,31 +52,31 @@ module WebGlue
           varchar     :vmode, :size => 32    # 'sync' or 'async'
           integer     :state, :default => 0  # 0 - verified, 1 - need verification
           time        :created
-          index       [:created] 
-          index       [:vmode] 
+          index       [:created]
+          index       [:vmode]
           index       [:topic_id, :callback], :unique => true
         end
       end
     end
-    
+
     helpers do
       def timestamp
         Time.new.strftime("%Y-%m-%d %H:%M:%S")
       end
 
       def logger
-        LOGGER 
+        LOGGER
       end
 
       def log_debug(string)
         puts("D, [#{timestamp}] DEBUG : #{string}") if APP_DEBUG == true
         logger.debug(string)
-      end  
+      end
 
       def log_error(string)
         puts("E, [#{timestamp}] ERROR : #{string}") if APP_DEBUG == true
         logger.error(string)
-      end  
+      end
 
       def log_exception(ex)
         logger.error("Exception #{ex.inspect}\nParams #{params.inspect}\n#{ex.backtrace.join("\n")}")
@@ -90,7 +90,7 @@ module WebGlue
 
       def authorized?
         @auth ||=  Rack::Auth::Basic::Request.new(request.env)
-        @auth.provided? && @auth.basic? && @auth.credentials && 
+        @auth.provided? && @auth.basic? && @auth.credentials &&
                            @auth.credentials == ['admin', 'secret']
       end
 
@@ -99,7 +99,7 @@ module WebGlue
         salt = Time.now.to_s
         Zlib.crc32(base + salt).to_s(36)
       end
-    
+
       # post a message to a list of subscribers (urls)
       def postman(subs, msg)
         extheaders = { 'Content-Type' => 'application/atom+xml' }
@@ -109,7 +109,7 @@ module WebGlue
             unless sub[:secret].empty?
               signature = HMAC::SHA1.hexdigest(sub[:secret], msg)
               extheaders['X-Hub-Signature'] = "sha1=#{signature}"
-            end  
+            end
             MyTimer.timeout(Config::GIVEUP) do
               log_debug("Updating #{url} with new items")
               HTTPClient.post(url, msg, extheaders)
@@ -120,7 +120,7 @@ module WebGlue
               log_error("Timeout: #{url}")
             else
               log_exception(e)
-            end 
+            end
             next
           end
         end
@@ -150,12 +150,12 @@ module WebGlue
               log_error("Timeout: #{url}")
             else
               log_exception(e)
-            end 
+            end
             next
           end
         end
       end
-    
+
       # Publishers pinging this URL, when there is new content
       def do_publish(params)
         content_type 'text/plain', :charset => 'utf-8'
@@ -192,7 +192,7 @@ module WebGlue
           throw :halt, [404, e.to_s]
         end
       end
-      
+
       # Subscribe to existing topics
       def do_subscribe(params)
         mode     = params['hub.mode']
@@ -200,7 +200,7 @@ module WebGlue
         topic    = params['hub.topic']
         verify   = params['hub.verify']
         vtoken   = params['hub.verify_token']
-        
+
         content_type 'text/plain', :charset => 'utf-8'
         unless callback and topic and verify
           throw :halt, [400, "Bad request: Expected 'hub.callback', 'hub.topic', and 'hub.verify'"]
@@ -208,13 +208,13 @@ module WebGlue
         throw :halt, [400, "Bad request: Empty 'hub.callback' or 'hub.topic'"]  if (callback.empty? or topic.empty?)
         # anchor part in the url not allowed by the spec
         throw :halt, [400, "Bad request: Invalid URL"] if (callback.include?('#') or topic.include?('#'))
-        
+
         throw :halt, [400, "Bad request: Unrecognized mode"] unless ['subscribe', 'unsubscribe'].include?(mode)
 
         # Processing optional secret
         secret = params['hub.secret'] ? params['hub.secret'] : ''
-       
-        # remove invalid verify modes 
+
+        # remove invalid verify modes
         verify = Array(verify.split(',')).delete_if { |x| not ['sync','async'].include?(x) }
         throw :halt, [400, "Bad request: Unrecognized verification mode"] if verify.empty?
         # For now, only using the first preference of verify mode
@@ -224,7 +224,7 @@ module WebGlue
           hash =  Topic.to_hash(topic)
           tp =  DB[:topics].filter(:url => hash).first
           throw :halt, [404, "Not Found"] if tp.nil? or tp[:id].nil?
-          
+
           state = (verify == 'async') ? 1 : 0
           query = { 'hub.mode' => mode,
                     'hub.topic' => topic,
@@ -239,7 +239,7 @@ module WebGlue
             end
             state = 0
           end
-      
+
           # Add subscription
           # subscribe/unsubscribe to/from ALL channels with that topic
           log_debug("Subscription: mode=#{mode}, topic=#{topic}, callback=#{callback}")
@@ -247,10 +247,10 @@ module WebGlue
           cb.delete if (mode == 'unsubscribe' or cb.first)
           if mode == 'subscribe'
             raise "DB insert failed" unless DB[:subscriptions] << {
-              :topic_id => tp[:id], :callback => Topic.to_hash(callback), 
+              :topic_id => tp[:id], :callback => Topic.to_hash(callback),
               :vtoken => vtoken, :vmode => verify, :secret => secret, :state => state }
           end
-          throw :halt, verify == 'async' ? [202, "202 Scheduled for verification"] : 
+          throw :halt, verify == 'async' ? [202, "202 Scheduled for verification"] :
                                            [204, "204 No Content"]
         rescue Exception => e
           log_exception(e)
@@ -288,7 +288,7 @@ module WebGlue
     error do
       log_error(request.env['sinatra.error'].inspect);
     end
-    
+
     get '/' do
       erb :index
     end
@@ -297,7 +297,7 @@ module WebGlue
     get '/publish' do
       erb :publish
     end
-    
+
     # Debug subscribe to PubSubHubbub
     get '/subscribe' do
       erb :subscribe
@@ -311,7 +311,7 @@ module WebGlue
         when 'publish' then do_publish(params)
         when 'subscribe', 'unsubscribe' then do_subscribe(params)
         else throw :halt, [400, "Bad request, unknown 'hub.mode' parameter"]
-      end  
+      end
     end
 
     post '/verify' do
@@ -329,7 +329,7 @@ module WebGlue
     get '/admin/cleanup' do
       protected!
       # old topics with no subscriptions
-      ids = DB[:topics].filter(:created < (Time.now - 24*3600*7)).select(:id,:created).collect { 
+      ids = DB[:topics].filter(:created < (Time.now - 24*3600*7)).select(:id,:created).collect {
         |t| t[:id] if DB[:subscriptions].filter(:topic_id=>t[:id]).count == 0 }
       ids.delete_if {|x| x.nil?}
       count = DB[:topics].filter(:id => ids).delete
