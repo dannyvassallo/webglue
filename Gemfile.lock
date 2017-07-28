@@ -13,6 +13,7 @@ GEM
     kgio (2.11.0)
     libxml-ruby (2.9.0)
     mustermann (1.0.0)
+    pg (0.21.0)
     rack (2.0.3)
     rack-protection (2.0.0)
       rack
@@ -49,6 +50,7 @@ DEPENDENCIES
   httpclient
   json
   libxml-ruby
+  pg
   rake (= 0.8.7)
   ratom
   ruby-hmac
